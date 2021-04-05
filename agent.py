@@ -57,6 +57,9 @@ def create_random_citizen_agent(unique_id, model):
     return CitizenAgent(unique_id, create_physical_profile_random(model),
                         create_mental_profile_random(model), model)
 
+def create_random_policeman_agent(unique_id, model):
+    return PolicemanAgent(unique_id, create_physical_profile_random(model),
+                        create_mental_profile_random(model), model)
 class CitizenAgent(Agent):
     """ An agent of a specified profile that describes agent's health and attitude"""
 
@@ -67,13 +70,15 @@ class CitizenAgent(Agent):
         self.next_pos = None
 
         self.profile = dict(physical_profile, **mental_profile)
-        self.next_profile = None
+        self.next_profile = self.profile.copy()
         """ 0 - no mask, 0.5 - cotton mask, 1 - KN95 mask """
-        self.mask_protection = 0
-        self.next_mask_protection = 0
+        self.mask_protection = self.calculate_mask_protection(self.profile)
+        self.next_mask_protection = self.calculate_mask_protection(self.next_profile)
         """ 0 - do not avoid, 0.5 - avoid unmasked, 1 - avoid all """
-        self.avoid_others = 0
-        self.next_avoid_others = 0
+        self.avoid_others = self.calculate_avoid_others(self.profile)
+        self.next_avoid_others = self.calculate_avoid_others(self.next_profile)
+
+        self.modifiable_mental_features = mental_features
 
     def start_infection(self):
         self.profile["infection_day"] = 1
@@ -87,13 +92,20 @@ class CitizenAgent(Agent):
         return self.profile["infection_day"] > 0 and not self.is_immune()
 
     def is_infectious(self):
-        return self.profile["infection_day"] >= self.model.disease.infectiousness_start                 and not self.is_immune()
+        return self.profile["infection_day"] >= self.model.disease.infectiousness_start and not self.is_immune()
 
     def is_symptomatic(self):
-        return self.profile["infection_day"] >= self.model.disease.symptoms_start                 and not self.is_immune()
+        return self.profile["infection_day"] >= self.model.disease.symptoms_start and not self.is_immune()
 
     def is_immune(self):
         return self.profile["infection_day"] > self.model.disease.duration
+
+    def prepare_for_ticket(self):
+        self.next_profile["obedience"] += self.model.config.ticket_impact
+        self.next_profile["obedience"] = min(1.0, self.next_profile["obedience"])
+
+    def plan_individual_actions(self, cellmates):
+        pass
 
     def plan_pass_away(self):
         self.next_profile["deceased"] = True
@@ -121,10 +133,14 @@ class CitizenAgent(Agent):
         self.model.grid.move_agent(self, self.next_pos)
 
     def plan_set_protection(self):
-        self.next_mask_protection = self.next_profile["awareness"] * max(
-            self.next_profile["fear"], self.next_profile["obedience"])
-        self.next_avoid_others = self.next_profile["awareness"] * max(
-            self.next_profile["fear"], self.next_profile["obedience"])
+        self.next_mask_protection = self.calculate_mask_protection(self.next_profile)
+        self.next_avoid_others = self.calculate_avoid_others(self.next_profile)
+
+    def calculate_mask_protection(self, profile):
+        return profile["awareness"] * max(profile["fear"], profile["obedience"])
+
+    def calculate_avoid_others(self, profile):
+        return profile["awareness"] * max(profile["fear"], profile["obedience"])
 
     def set_protection(self):
         self.mask_protection = self.next_mask_protection
@@ -146,20 +162,19 @@ class CitizenAgent(Agent):
 
     def plan_update_mental_profile(self, cellmates):
         # cellmates is not empty: it includes the agent itself
-        for m in mental_features:
+        for m in self.modifiable_mental_features:
             avg_feature = sum([c.profile[m] for c in cellmates])/len(cellmates)
             if avg_feature > self.profile[m]:
-                self.next_profile[m] = min(avg_feature, self.profile[m] +
+                self.next_profile[m] += min(avg_feature - self.profile[m],
                                            self.model.config.group_pressure_inc)
             if avg_feature < self.profile[m]:
-                self.next_profile[m] = max(avg_feature, self.profile[m] -
-                                           self.model.config.group_pressure_inc)
+                self.next_profile[m] += max(avg_feature - self.profile[m],
+                                           -self.model.config.group_pressure_inc)
 
     def update_profile(self):
         self.profile = self.next_profile.copy()
 
     def step(self):
-        self.next_profile = self.profile.copy()
         possible_steps = self.model.grid.get_neighborhood(
             self.pos, moore=True, include_center=True
         )
@@ -170,6 +185,7 @@ class CitizenAgent(Agent):
         self.plan_update_mental_profile(cellmates)
         self.plan_set_protection()
         self.plan_move(possible_steps)
+        self.plan_individual_actions(cellmates)
 
     def advance(self):
         self.update_profile()
@@ -178,3 +194,14 @@ class CitizenAgent(Agent):
         self.set_protection()
         self.move()
 
+class PolicemanAgent(CitizenAgent):
+    """ A fearless and perfectly obedient agent """
+    def __init__(self, unique_id, physical_profile, mental_profile, model):
+        mental_profile['obedience'] = 1.0
+        mental_profile['fear'] = 0
+        super().__init__(unique_id, physical_profile, mental_profile, model)
+        self.modifiable_mental_features = ['awareness']
+
+    def plan_individual_actions(self, cellmates):
+        for c in filter(lambda c: c.mask_protection < 0.5, cellmates):
+            c.prepare_for_ticket()

@@ -24,6 +24,8 @@ import visualisation as vis
 class Config():
     def __init__(self):
         self.group_pressure_inc = 0.05
+        self.ticket_impact = 0.2
+        self.policemen_count = 5
 
     def parse_from_file(self, filepath):
         pass
@@ -53,7 +55,10 @@ class PandemicsModel(Model):
         self.config = config
         # Create agents
         for i in range(self.num_agents):
-            a = agent.create_random_citizen_agent(i, self)
+            if i < self.config.policemen_count:
+                a = agent.create_random_policeman_agent(i, self)
+            else:
+                a = agent.create_random_citizen_agent(i, self)
             self.schedule.add(a)
             # Add the agent to a random grid cell
             x = self.random.randrange(self.grid.width)
