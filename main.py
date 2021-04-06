@@ -12,6 +12,9 @@ import time
 from IPython import display
 import numpy as np
 import copy
+from collections import defaultdict
+
+import random # for random buildings
 
 """ A simple model of a pandemics. Agents behave in accordance
 with their mental profiles, which are influenced by the neighbourhood.
@@ -26,8 +29,8 @@ class Config():
         if filepath:
             pass
         else:
-            self.width = 20
-            self.height = 20
+            self.width = 50
+            self.height = 50
             self.citizens_count = 30
             self.policemen_count = 0
             self.infected_count = 5
@@ -55,6 +58,86 @@ class Config():
         if citizens_count:
             self.citizens_count = citizens_count
 
+        self.building_tags = {"house": 1, "workplace": 2, "shop": 3}
+        self.parse_buildings()
+        #self.create_random_buildings(minimum_margin=1)
+
+    def parse_buildings(self):
+        # TODO: read description from a file
+        self.houses_count = 5
+        self.workplaces_count = 3
+        self.shops_count = 5
+
+        houses_sector = (0, self.width // 5) # Size proportions: house - 1, workplace - 2, shop - 2
+        workplaces_sector = (self.width // 5, 3 * self.width // 5)
+        shops_sector = (3 * self.width // 5, self.width)
+
+        self.houses = self.create_buildings(
+                houses_sector, "house", 1, self.houses_count)
+        self.workplaces = self.create_buildings(
+                workplaces_sector, "workplace", 3, self.workplaces_count)
+        self.shops = self.create_buildings(
+                shops_sector, "shop", 3, self.shops_count)
+
+    def create_buildings(self, sector_dim, sector_type, margin_width, count):
+        x = sector_dim[0] + margin_width
+        y = margin_width
+        building_width = (sector_dim[1] - sector_dim[0]) - 2 * margin_width
+        building_height = (self.height - ((count + 1) * margin_width)) // count
+        return [{
+            "id": i,
+            "bottom-left": (x, margin_width + (building_height + margin_width) * i),
+            "width": building_width,
+            "height": building_height,
+            "type": sector_type}
+            for i in range(count)]
+
+    def create_random_buildings(self, minimum_margin=0):
+        self.houses_count = 5
+        self.workplaces_count = 5
+        self.shops_count = 5
+
+        building_types = ["house"] * self.houses_count + \
+                         ["workplace"] * self.workplaces_count + \
+                         ["shop"] * self.shops_count
+
+        def colides(a, b, minium_margin=0):
+            colides_on_x = (a[0] > b[0] - minimum_margin and a[0] < b[0] + b[2] + minimum_margin) or \
+            (b[0] > a[0] - minimum_margin and b[0] < a[0] + a[2] + minimum_margin)
+            colides_on_y = (a[1] > b[1] - minimum_margin and a[1] < b[1] + b[3] + minimum_margin) or \
+            (b[1] > a[1] - minimum_margin and b[1] < a[1] + a[3] + minimum_margin)
+            return colides_on_x and colides_on_y
+
+        buildings = []
+        for i in range(30000):
+            if len(buildings) >= 15:
+                break
+            # X, Y, Width, Height
+            building_candidate = (random.randrange(self.width), random.randrange(self.height),
+                    random.randrange(2, 5), random.randrange(2, 5))
+            if any([colides(building_candidate, b, minimum_margin) for b in buildings]):
+                continue
+            if (building_candidate[0] + building_candidate[2] > self.width):
+                continue
+            if (building_candidate[1] + building_candidate[3] > self.width):
+                continue
+            buildings.append(building_candidate)
+
+        random.shuffle(buildings)
+        ready_buildings = [{
+            "id": i,
+            "bottom-left": (b[0], b[1]),
+            "width": b[2],
+            "height": b[3],
+            "type": building_types[i]}
+            for i, b in enumerate(buildings)]
+
+        self.houses = ready_buildings[0: self.houses_count]
+        self.workplaces = ready_buildings[self.houses_count: self.houses_count+self.workplaces_count]
+        self.shops = ready_buildings[self.houses_count+self.workplaces_count:
+                self.houses_count+self.workplaces_count+self.shops_count]
+
+
     def parse_from_file(self, filepath):
         pass
 
@@ -70,6 +153,7 @@ class PandemicsModel(Model):
         self.infected_counter = 0
         self.grid = MultiGrid(config.width, config.height, True)
         self.safety_per_cell = np.ones((config.height, config.width))
+        self.buildings_map = np.zeros((config.height, config.width))
         self.schedule = SimultaneousActivation(self)
         self.datacollector = DataCollector(
             model_reporters={
@@ -83,20 +167,37 @@ class PandemicsModel(Model):
                 "fear": lambda a: a.profile["fear"]}
         )
         self.config = config
+        self.add_buildings_to_map(self.config.houses)
+        self.add_buildings_to_map(self.config.workplaces)
+        self.add_buildings_to_map(self.config.shops)
+
+        self.house_to_agents = defaultdict(list)
+        self.workplace_to_agents = defaultdict(list)
+
         # Create agents
         for i in range(self.agents_count):
             if i < config.policemen_count:
                 a = agent.create_distribution_policeman_agent(
                         i, self, config.policemen_mental_features_distribution)
+                a.assign_house(self, self.config.houses)
             elif i < config.policemen_count + config.citizens_count:
                 a = agent.create_distribution_citizen_agent(
                         i, self, config.citizens_mental_features_distribution)
+                a.assign_house(self, self.config.houses)
+                a.assign_workplace(self, self.config.workplaces)
             self.add_agent(a)
 
         for i in self.random.choices(self.schedule.agents, k=config.infected_count):
             i.start_infection()
         self.running = True
         self.datacollector.collect(self)
+
+    def add_buildings_to_map(self, buildings):
+        for b in buildings:
+            (x, y) = b["bottom-left"]
+            for i in range(x, x+b["width"]):
+                for j in range(y, y+b["height"]):
+                    self.buildings_map[j][i] = self.config.building_tags[b["type"]]
 
     def add_agent(self, a):
         self.schedule.add(a)
@@ -162,8 +263,8 @@ class PandemicsModel(Model):
 """ Runnig and visualising a simulation """
 from matplotlib import gridspec
 
-grid_width = 20
-grid_height = 20
+grid_width = 30
+grid_height = 30
 policemen_count = 10
 citizens_count = 30
 infected_initially_count = 5
@@ -185,12 +286,14 @@ for i in range(num_steps):
     fig = plt.figure(figsize=(fig_height * fig_cols * grid_width/grid_height,fig_height))
     gs = gridspec.GridSpec(fig_rows, fig_cols, width_ratios=[1, 1], height_ratios=[10,1])
     ax0 = fig.add_subplot(gs[0, 0])
+    cax0 = fig.add_subplot(gs[1, 0])
     vis.visualise_all_agents_position_and_covid_status(ax0, model)
+    vis.visualise_buildings_map(ax0, cax0, model)
     ax1 = fig.add_subplot(gs[0, 1])
-    cax = fig.add_subplot(gs[1, 1])
+    cax1 = fig.add_subplot(gs[1, 1])
     #vis.heatmap_safety_per_cell(ax1, cax, model)
-    vis.heatmap_all_agents_profile_feature(ax1, cax, model, 'obedience')
-    display.clear_output(wait=True) # Uncomment to see plt imgs as animation
+    vis.heatmap_all_agents_profile_feature(ax1, cax1, model, 'obedience')
+    #display.clear_output(wait=True) # Uncomment to see plt imgs as animation
     display.display(plt.gcf())
     #time.sleep(0.1)
     plt.close(fig)

@@ -40,6 +40,17 @@ def heatmap_safety_per_cell(ax, cax, model):
     im = ax.imshow(model.safety_per_cell, vmin=0, vmax=1, cmap='Blues_r', origin='lower', aspect='auto')
     plt.colorbar(im, ax=ax, cax=cax, orientation="horizontal")
 
+# Visualises building types
+def visualise_buildings_map(ax, cax, model):
+    visualisation_setup(ax, model, "building map")
+    cmap = matplotlib.cm.get_cmap('Blues_r', 100)
+    cmap.set_under('lightgrey')
+    im = ax.imshow(model.buildings_map,
+            vmin=min(model.config.building_tags.values()),
+            vmax=max(model.config.building_tags.values()),
+            cmap=cmap, origin='lower', aspect='auto')
+    plt.colorbar(im, ax=ax, cax=cax, orientation="horizontal")
+
 # Displays single agent position with given color. If `tail` is True
 # also show path from previous position.
 def visualise_agent_position(ax, model, agent, c='red', tail=False):
@@ -58,9 +69,9 @@ def visualise_all_agents_position(ax, model):
     visualisation_setup(ax, model, "position")
     cmap = plt.cm.get_cmap('summer')
     #normalize item number values to colormap
-    norm = matplotlib.colors.Normalize(vmin=0, vmax=len(agents))
+    norm = matplotlib.colors.Normalize(vmin=0, vmax=len(model.schedule.agents))
     for a in model.schedule.agents:
-        visualise_agent_position(ax, model, a, cmap(norm(a.unique_id)))
+        visualise_agent_position(ax, model, a, cmap(norm(a.unique_id)), True)
 
 # Maps agent infection state to color
 def get_color_for_infection_state(agent):

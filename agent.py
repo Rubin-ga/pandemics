@@ -101,6 +101,14 @@ class CitizenAgent(Agent):
 
         self.modifiable_mental_features = mental_features
 
+    def assign_house(self, model, houses):
+        house = model.random.choice(houses)
+        model.house_to_agents[house["id"]].append(self.unique_id)
+
+    def assign_workplace(self, model, workplaces):
+        workplace = model.random.choice(workplaces)
+        model.workplace_to_agents[workplace["id"]].append(self.unique_id)
+
     def start_infection(self):
         self.profile["infection_day"] = 1
         self.model.infected_counter += 1
