@@ -44,7 +44,10 @@ def heatmap_safety_per_cell(ax, cax, model):
 # also show path from previous position.
 def visualise_agent_position(ax, model, agent, c='red', tail=False):
     visualisation_setup(ax, model, "position")
-    px, py = agent.prev_pos
+    if agent.prev_pos:
+        px, py = agent.prev_pos
+    else:
+        px, py = agent.pos
     x, y = agent.pos
     ax.plot([x], [y], color=c, markersize=5, marker='o')
     if tail and abs(px-x) <= 1 and abs(py-y) <= 1: # the grid is toroidal

@@ -2,6 +2,7 @@
 # coding: utf-8
 
 from mesa import Agent, Model
+import numpy as np
 import copy
 
 """ Agent Mental Profile """
@@ -41,6 +42,12 @@ def create_mental_profile_random(model):
     profile['awareness'] = model.random.random()
     return profile
 
+def create_mental_profile_distribution(model, distribution):
+    profile = dict()
+    for feature, dist in distribution.items():
+        profile[feature] = np.random.normal(dist[0], dist[1])
+    return profile
+
 def create_mental_profile_perfect_citizen(model):
     profile = dict()
     profile['obedience'] = 1.0
@@ -56,6 +63,20 @@ def create_mental_profile_rebel_citizen(model):
 def create_random_citizen_agent(unique_id, model):
     return CitizenAgent(unique_id, create_physical_profile_random(model),
                         create_mental_profile_random(model), model)
+
+def create_distribution_citizen_agent(unique_id, model,
+        mental_features_distribution, physical_features_distribution=None):
+    return CitizenAgent(unique_id,
+            create_physical_profile_random(model),
+            create_mental_profile_distribution(model, mental_features_distribution),
+            model)
+
+def create_distribution_policeman_agent(unique_id, model,
+        mental_features_distribution, physical_features_distribution=None):
+    return PolicemanAgent(unique_id,
+            create_physical_profile_random(model),
+            create_mental_profile_distribution(model, mental_features_distribution),
+            model)
 
 def create_random_policeman_agent(unique_id, model):
     return PolicemanAgent(unique_id, create_physical_profile_random(model),
@@ -167,9 +188,11 @@ class CitizenAgent(Agent):
             if avg_feature > self.profile[m]:
                 self.next_profile[m] += min(avg_feature - self.profile[m],
                                            self.model.config.group_pressure_inc)
+                self.next_profile[m] = min(1.0, self.next_profile[m])
             if avg_feature < self.profile[m]:
                 self.next_profile[m] += max(avg_feature - self.profile[m],
                                            -self.model.config.group_pressure_inc)
+                self.next_profile[m] = max(0.0, self.next_profile[m])
 
     def update_profile(self):
         self.profile = self.next_profile.copy()
