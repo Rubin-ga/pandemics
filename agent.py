@@ -101,13 +101,16 @@ class CitizenAgent(Agent):
 
         self.modifiable_mental_features = mental_features
 
+        self.house = None
+        self.workplace = None
+
     def assign_house(self, model, houses):
-        house = model.random.choice(houses)
-        model.house_to_agents[house["id"]].append(self.unique_id)
+        self.house = model.random.choice(houses)
+        model.house_to_agents[self.house["id"]].append(self.unique_id)
 
     def assign_workplace(self, model, workplaces):
-        workplace = model.random.choice(workplaces)
-        model.workplace_to_agents[workplace["id"]].append(self.unique_id)
+        self.workplace = model.random.choice(workplaces)
+        model.workplace_to_agents[self.workplace["id"]].append(self.unique_id)
 
     def start_infection(self):
         self.profile["infection_day"] = 1
@@ -161,6 +164,27 @@ class CitizenAgent(Agent):
         self.prev_pos = self.pos
         self.model.grid.move_agent(self, self.next_pos)
 
+    # Returns building of `b_type` assigned to agent, returns None when agent should be assigned to street
+    def select_building(self, b_type):
+        if b_type == 'house':
+            return self.house
+        if b_type == 'workplace':
+            return self.workplace
+        if b_type == 'shop':
+            return self.random.choice(self.model.shops)
+
+    def teleport_to_building(self, b):
+        x = self.random.randrange(b["bottom-left"][0],
+                b["bottom-left"][0] + b["width"])
+        y = self.random.randrange(b["bottom-left"][1],
+                b["bottom-left"][1] +
+                b["height"])
+        self.model.grid.move_agent(self, (x, y))
+
+    def teleport_to_street(self):
+        (x, y) = self.model.random.choice(self.model.street_positions)
+        self.model.grid.move_agent(self, (x, y))
+
     def plan_set_protection(self):
         self.next_mask_protection = self.calculate_mask_protection(self.next_profile)
         self.next_avoid_others = self.calculate_avoid_others(self.next_profile)
@@ -210,6 +234,9 @@ class CitizenAgent(Agent):
         possible_steps = self.model.grid.get_neighborhood(
             self.pos, moore=True, include_center=True
         )
+        b_id = self.model.buildings_id_map[self.pos[1]][self.pos[0]]
+        possible_steps = list(filter(lambda s:
+            (self.model.buildings_id_map[s[1]][s[0]] == b_id), possible_steps))
         cellmates = self.model.grid.get_cell_list_contents(possible_steps)
         self.plan_update_physical_profile(cellmates)
         if self.next_profile["deceased"] == True:
@@ -237,3 +264,9 @@ class PolicemanAgent(CitizenAgent):
     def plan_individual_actions(self, cellmates):
         for c in filter(lambda c: c.mask_protection < 0.5, cellmates):
             c.prepare_for_ticket()
+
+    # Returns building of `b_type` assigned to agent
+    def select_building(self, b_type):
+        if b_type == 'workplace':
+            return self.random.choice(self.model.workplaces)
+        return super().select_building(b_type)
