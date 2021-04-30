@@ -177,10 +177,11 @@ class CitizenAgent(Agent):
 
     def plan_update_physical_profile(self, cellmates):
         if self.is_infected():
-            self.next_profile["infection_day"] += 1
-            self.next_profile["hp"] += self.model.disease.hp_change(self.profile)
-            if self.next_profile["hp"] <= 0:
-                self.plan_pass_away()
+            if self.model.steps_count % self.model.config.steps_per_day == 0:
+                self.next_profile["infection_day"] += 1
+                self.next_profile["hp"] += self.model.disease.hp_change(self.profile)
+                if self.next_profile["hp"] <= 0:
+                    self.plan_pass_away()
         elif not self.is_immune(): # Susceptible to infection
             for c in filter(lambda c: c.is_infectious(), cellmates):
                 risk = self.model.random.random()

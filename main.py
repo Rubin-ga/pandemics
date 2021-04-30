@@ -35,6 +35,8 @@ class Config():
             self.policemen_count = 0
             self.infected_count = 5
 
+            self.steps_per_day = 48
+
             self.citizens_mental_features_distribution = {
                     # feature:(mean, sd of normal distribution)
                     "fear": (0.5, 0.5),
@@ -47,7 +49,7 @@ class Config():
                     "awareness": (0.75, 0.25),
                     }
 
-            self.group_pressure_inc = 0.05
+            self.group_pressure_inc = 0.10 / self.steps_per_day
             self.ticket_impact = 0.75
 
         # override if parameters are given
@@ -59,6 +61,18 @@ class Config():
             self.citizens_count = citizens_count
 
         self.building_tags = {"house": 1, "workplace": 2, "shop": 3}
+
+        self.day_plan = {
+                0: 'house',
+                7: None,
+                8: 'workplace',
+                16: None,
+                17: 'shop',
+                19: None,
+                20: 'house',
+                }
+
+
         self.parse_buildings()
         #self.create_random_buildings(minimum_margin=1)
 
@@ -190,6 +204,7 @@ class PandemicsModel(Model):
         for i in self.random.choices(self.schedule.agents, k=config.infected_count):
             i.start_infection()
         self.running = True
+        self.steps_count = 0
         self.datacollector.collect(self)
 
     def add_buildings_to_map(self, buildings):
@@ -249,6 +264,7 @@ class PandemicsModel(Model):
     def step(self):
         self.evaluate_safety_per_cell()
         self.schedule.step()
+        self.steps_count += 1
         # collect data
         self.datacollector.collect(self)
         for d in self.deceased:
@@ -280,23 +296,24 @@ fig_cols = 2
 fig_rows = 2
 
 model = PandemicsModel(test_rebels_policemen_config)
-num_steps = 50
+num_steps = 145
 
 for i in range(num_steps):
-    fig = plt.figure(figsize=(fig_height * fig_cols * grid_width/grid_height,fig_height))
-    gs = gridspec.GridSpec(fig_rows, fig_cols, width_ratios=[1, 1], height_ratios=[10,1])
-    ax0 = fig.add_subplot(gs[0, 0])
-    cax0 = fig.add_subplot(gs[1, 0])
-    vis.visualise_all_agents_position_and_covid_status(ax0, model)
-    vis.visualise_buildings_map(ax0, cax0, model)
-    ax1 = fig.add_subplot(gs[0, 1])
-    cax1 = fig.add_subplot(gs[1, 1])
-    #vis.heatmap_safety_per_cell(ax1, cax, model)
-    vis.heatmap_all_agents_profile_feature(ax1, cax1, model, 'obedience')
-    #display.clear_output(wait=True) # Uncomment to see plt imgs as animation
-    display.display(plt.gcf())
-    #time.sleep(0.1)
-    plt.close(fig)
+    if (i % model.config.steps_per_day == 0):
+        fig = plt.figure(figsize=(fig_height * fig_cols * grid_width/grid_height,fig_height))
+        gs = gridspec.GridSpec(fig_rows, fig_cols, width_ratios=[1, 1], height_ratios=[10,1])
+        ax0 = fig.add_subplot(gs[0, 0])
+        cax0 = fig.add_subplot(gs[1, 0])
+        vis.visualise_all_agents_position_and_covid_status(ax0, model)
+        vis.visualise_buildings_map(ax0, cax0, model)
+        ax1 = fig.add_subplot(gs[0, 1])
+        cax1 = fig.add_subplot(gs[1, 1])
+        #vis.heatmap_safety_per_cell(ax1, cax, model)
+        vis.heatmap_all_agents_profile_feature(ax1, cax1, model, 'obedience')
+        #display.clear_output(wait=True) # Uncomment to see plt imgs as animation
+        display.display(plt.gcf())
+        #time.sleep(0.1)
+        plt.close(fig)
 
     model.step()
 
